@@ -281,7 +281,7 @@ router.get('/gen-fake-data', async function (req, res, next) {
     password: bcrypt.hashSync("klean", 10),
     city: requeteCity[requeteCity.findIndex(e => e.cityName === "Massy")]["_id"],
     avatarUrl: "https://res.cloudinary.com/dcjawpw4p/image/upload/v1628171531/Klean/LA_CAPSULE_15-06-2021-290HD_1_i9gj66.jpg",
-    token: uid2(32),
+    token: process.env.TOKEN_ADMIN,
   });
 
   var hugoSaved = await hugo.save();

@@ -20,8 +20,10 @@ function validateEmail(email) {
   return re.test(email);
 }
 
-//    POST Sign-up    //
+
+/* SIGN-UP */
 router.post("/sign-up", async function (req, res, next) {
+
   let error = [];
   let result = false;
   let saveUser = null;
@@ -51,16 +53,19 @@ router.post("/sign-up", async function (req, res, next) {
     error.push("Format d'email incorrect");
   }
 
-  // register
+  /* Inscription à l'application sans participation à une cleanwalk */
   if (error.length == 0 && idCleanwalk === undefined) {
+
     let cityInfo = JSON.parse(req.body.cityInfo);
     let code = cityInfo.properties.citycode;
     let coordinates = cityInfo.geometry.coordinates;
     let population = cityInfo.properties.population;
     let found = await cityModel.findOne({ cityCode: code });
 
+    /* Si la ville entrée par l'utilisateur existe déjà en base de données */
     if (found) {
       let hash = bcrypt.hashSync(req.body.passwordFromFront, 10);
+      /* Création de l'utilisateur en base de données */
       let newUser = new userModel({
         firstName: req.body.firstNameFromFront,
         lastName: req.body.lastNameFromFront,
@@ -78,7 +83,10 @@ router.post("/sign-up", async function (req, res, next) {
         result = true;
         token = saveUser.token;
       }
+
+    /* Si la ville entrée par l'utilisateur n'existe pas en base de données */
     } else if (found == null) {
+      /* Création de la ville en base de données */
       let newCity = new cityModel({
         cityName: req.body.cityFromFront,
         cityCoordinates: {
@@ -90,6 +98,7 @@ router.post("/sign-up", async function (req, res, next) {
       });
       let citySaved = await newCity.save();
 
+      /* Création de l'utilisateur en base de données */
       let hash = bcrypt.hashSync(req.body.passwordFromFront, 10);
       let newUser = new userModel({
         firstName: req.body.firstNameFromFront,
@@ -113,13 +122,13 @@ router.post("/sign-up", async function (req, res, next) {
     res.json({
       error,
       result,
-      saveUser,
       token,
     });
   }
 
-  // register & participate
+  /* Inscription à l'application avec participation à une cleanwalk */
   else if (error.length == 0 && idCleanwalk !== undefined) {
+
     let cityInfo = JSON.parse(req.body.cityInfo);
     let code = cityInfo.properties.citycode;
     let coordinates = cityInfo.geometry.coordinates;
@@ -127,8 +136,10 @@ router.post("/sign-up", async function (req, res, next) {
 
     let found = await cityModel.findOne({ cityCode: code });
 
+    /* Si la ville entrée par l'utilisateur existe en base de données */
     if (found) {
       let hash = bcrypt.hashSync(req.body.passwordFromFront, 10);
+      /* création de l'utilisateur en base de données */
       let newUser = new userModel({
         firstName: req.body.firstNameFromFront,
         lastName: req.body.lastNameFromFront,
@@ -143,8 +154,8 @@ router.post("/sign-up", async function (req, res, next) {
       let saveUser = await newUser.save();
 
       if (saveUser) {
-        let cleanwalk = await cleanwalkModel.findOne({ _id: idCleanwalk });
 
+        /* Ajout de l'utilisateur dans la liste des participants de la cleanwalk */
         newParticipant = await cleanwalkModel.updateOne(
           { _id: idCleanwalk },
           { $push: { participantsList: saveUser._id } }
@@ -153,7 +164,11 @@ router.post("/sign-up", async function (req, res, next) {
         result = true;
         token = saveUser.token;
       }
+
+    /* Si la ville entrée par l'utilisateur n'existe pas en base de données */
     } else if (found == null) {
+
+      /* Création de la ville en base de données */
       let newCity = new cityModel({
         cityName: req.body.cityFromFront,
         cityCoordinates: {
@@ -165,6 +180,7 @@ router.post("/sign-up", async function (req, res, next) {
       });
       let citySaved = await newCity.save();
 
+      /* Création de l'utilisateur en base de données */
       let hash = bcrypt.hashSync(req.body.passwordFromFront, 10);
       let newUser = new userModel({
         firstName: req.body.firstNameFromFront,
@@ -180,8 +196,8 @@ router.post("/sign-up", async function (req, res, next) {
       let saveUser = await newUser.save();
 
       if (saveUser) {
-        let cleanwalk = await cleanwalkModel.findOne({ _id: idCleanwalk });
 
+        /* Ajout de l'utilisateur dans la liste des participants de la cleanwalk */
         newParticipant = await cleanwalkModel.updateOne(
           { _id: idCleanwalk },
           { $push: { participantsList: saveUser._id } }
@@ -194,7 +210,6 @@ router.post("/sign-up", async function (req, res, next) {
     res.json({
       error,
       result,
-      saveUser,
       token,
       newParticipant,
     });
@@ -204,7 +219,9 @@ router.post("/sign-up", async function (req, res, next) {
   }
 });
 
-//    POST Sign-in    //
+
+
+/* SIGN-IN */
 router.post("/sign-in", async function (req, res, next) {
   let error = [];
   let result = false;
@@ -218,7 +235,7 @@ router.post("/sign-in", async function (req, res, next) {
     error.push("Veuillez remplir les deux champs.");
   }
 
-  // sign-in
+  /* Si l'utilisateur se connecte et n'est pas dans un processus de participation à une cleanwalk */
   if (error.length == 0 && idCleanwalk === undefined) {
     user = await userModel.findOne({
       email: req.body.emailFromFront.toLowerCase(),
@@ -229,18 +246,18 @@ router.post("/sign-in", async function (req, res, next) {
         result = true;
         token = user.token;
       } else {
-        result = false;
         error.push("Mot de passe incorrect.");
       }
     } else if (user == null) {
       error.push("Vous ne vous êtes pas encore enregistré.");
     }
 
-    res.json({ error, result, user, token });
+    res.json({ error, result, token });
   }
 
-  // sign-in & participate
+  /* Si l'utilisateur se connecte et se trouve dans un processus de participation à une cleanwalk */
   else if (error.length == 0 && idCleanwalk !== undefined) {
+
     user = await userModel.findOne({
     email: req.body.emailFromFront.toLowerCase(),
     });
@@ -250,36 +267,36 @@ router.post("/sign-in", async function (req, res, next) {
         result = true;
         token = user.token;
 
-        let cleanwalk = await cleanwalkModel.findOne({ _id: idCleanwalk });
-
+        /* L'utilisateur est ajouté à la liste des participants de la cleanwalk s'il est trouvé en base de données */
         newParticipant = await cleanwalkModel.updateOne(
           { _id: idCleanwalk },
           { $push: { participantsList: user._id } }
         );
       } else {
-        result = false;
         error.push("Mot de passe incorrect.");
       }
     } else if (user == null){
       error.push("Vous ne vous êtes pas encore enregistré.");
     }
-    res.json({ error, result, user, token, newParticipant });
+    res.json({ error, result, token, newParticipant });
   }
-  else{
+  else {
     res.json({ error, result });
   }
 });
 
 
-// PUT update password
+/* UPDATE-PASSWORD */
 router.put("/update-password", async function (req, res, next) {
   let result = false;
   let newPassword = null;
   let error = [];
-  let password = req.body.hold;
+  let password = req.body.old;
   let user = await userModel.findOne({ token: req.body.token });
 
-  if (bcrypt.compareSync(password, user.password) &&req.body.new === req.body.confirmNewPass) {
+  /* Compare le mot de passe actuelle avec celui en BDD via la fonction compareSync et vérifie également que le nouveau
+  mot de passe a bien été entrée de la même façon dans le champ principal et le champ de vérification */
+  if (bcrypt.compareSync(password, user.password) && req.body.new === req.body.confirmNewPass) {
     let hash = bcrypt.hashSync(req.body.confirmNewPass, 10);
     newPassword = await userModel.updateOne(
       { token: user.token },
@@ -288,11 +305,10 @@ router.put("/update-password", async function (req, res, next) {
     if (newPassword != null) {
       result = true;
     }
-    res.json({ result, user });
+    res.json({ result });
 
   } else if (req.body.new !== req.body.confirmNewPass) {
     error.push("Les champs du nouveau mot de passe ne sont pas identiques.");
-    result = false,
     res.json({ result, error });
   }
   else {

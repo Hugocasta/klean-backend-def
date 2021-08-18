@@ -1,6 +1,5 @@
 //Mise en place des variables d'environnement
-require('dotenv').config()
-console.log(process.env);
+require('dotenv').config();
 
 var fileUpload = require('express-fileupload');
 var createError = require('http-errors');
