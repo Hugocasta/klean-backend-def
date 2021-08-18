@@ -9,11 +9,10 @@ const cityModel = require("../models/cities");
 
 var cloudinary = require("cloudinary").v2;
 cloudinary.config({
-  cloud_name: "dcjawpw4p",
-  api_key: "525136121674624",
-  api_secret: "5COH_MbcLYthbGTl4VxaH0xAUHo",
+  cloud_name: process.env.CLOUDINARY_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
 });
-
 
 function validateEmail(email) {
   const re =
