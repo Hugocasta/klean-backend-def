@@ -12,7 +12,6 @@ const newsSchema = mongoose.Schema({
     newsDescription: String,
     newsImage: String,
     newsCoordinates: {newsCoordinatesSchema},
-    newsLike: Number,
 })
 
 const newsModel = mongoose.model("news", newsSchema);
