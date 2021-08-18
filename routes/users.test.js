@@ -1,15 +1,16 @@
-var app = require ("../app")
-var request = require ("supertest")
+var app = require("../app")
+var request = require("supertest")
 
-test ("enregistrement", async (done) => {
-    await request(app).post("/sign-up")
-    .send ({
-        "req.body.firsNameFromFront": "",
-        "req.body.lastNameFromFront": "",
-        "req.body.emailFromFront": "",
-        "req.body.cityFromFront": "",
-        "req.body.passwordFromFront": ""
-    })
-    .expect(200)
-    .expect(error.length == 1)
-} )
+test("all inputs empty", async () => {
+    const { body } = await request(app).post("/users/sign-up").send({
+      firstNameFromFront: "",
+      lastNameFromFront: "",
+      emailFromFront: "",
+      cityFromFront: "",
+      passwordFromFront: "",
+    });
+    expect(body).toStrictEqual({
+      error: ["Veuillez remplir tous les champs.", "Format d'email incorrect"],
+      result: false,
+    });
+  });

@@ -15,12 +15,13 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_SECRET,
 });
 
+/* Fonction qui permet de vérifier qu'un token est envoyé par le frontend pour activer une route */
 async function tokenIsValidated(token) {
 
   let userRequest = await userModel.find()
   let userTokenArr = userRequest.map(obj => obj.token)
 
-  //j'ajoute le token invité
+  //Ajout du token invité (utilisateur non connecté)
   userTokenArr.push(process.env.TOKEN_INVITED)
 
   if (userTokenArr.every(str => str !== token)) {
@@ -32,6 +33,7 @@ async function tokenIsValidated(token) {
 
 
 /*AUTOCOMPLETE-SEARCH*/
+/* Renvoie une liste d'adresses à partir d'une chaîne de caractère */
 router.post("/autocomplete-search", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -49,6 +51,7 @@ router.post("/autocomplete-search", async function (req, res, next) {
 
 
 /*AUTOCOMPLETE-SEARCH-CITY-ONLY*/
+/* Renvoie une liste de commune (hors arrondissement) à partir d'une chaîne de caractère */
 router.post("/autocomplete-search-city-only", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -58,10 +61,12 @@ router.post("/autocomplete-search-city-only", async function (req, res, next) {
       `https://api-adresse.data.gouv.fr/search/?q=${req.body.city}&type=municipality`
     );
     let response = JSON.parse(requete.body);
+    /* Supprime les adresses qui contiennent le mot arrondissement */
     let newResponse = response.features.filter(
       (obj) => !cityRegex.test(obj.properties.label)
     );
-    // console.log("newResponse", newResponse);
+
+    /* Permet d'adapter l'objet de réponse au composant autocomplete en ajoutant un champ label */
     newResponse = newResponse.map((obj) => {
       let copy = { ...obj };
       copy.properties.label = copy.properties.city;
@@ -76,13 +81,14 @@ router.post("/autocomplete-search-city-only", async function (req, res, next) {
 
 
 /*LOAD-CLEANWALK*/
+/* Permet de télécharger les informations qui concernent une cleanwalk */
 router.get("/load-cleanwalk/:idCW/:token", async function (req, res, next) {
   if (await tokenIsValidated(req.params.token)) {
     var cleanwalk = await cleanwalkModel
       .findById(req.params.idCW)
       .populate("cleanwalkCity")
-      .populate("participantsList")
-      .populate("admin")
+      .populate("participantsList", "firstName lastName avatarUrl")
+      .populate("admin", "firstName lastName avatarUrl")
       .exec();
 
     res.json({ result: true, cleanwalk });
@@ -93,6 +99,8 @@ router.get("/load-cleanwalk/:idCW/:token", async function (req, res, next) {
 
 
 /*LOAD-PIN-ON-CHANGE-REGION*/
+/* Permet de télécharger les cleanwalks dans un certain périmètre (latitude delta et longitude delta) et en fonction
+d'une date de début */
 router.post("/load-pin-on-change-region", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -100,7 +108,7 @@ router.post("/load-pin-on-change-region", async function (req, res, next) {
     const coordinateJsonParse = JSON.parse(req.body.coordinate);
     const dateSearch = req.body.date;
 
-    //on définit la fonction pour calculer les intervals nécessaires à la requête
+    //On définit la fonction pour calculer les intervalles de latitude et longitude nécessaires à la requête
     const definePerimeter = (regionLat, regionLong, latD, longD) => {
       let interval = {
         lat: { min: regionLat - 0.5 * latD, max: regionLat + 0.5 * latD },
@@ -109,7 +117,7 @@ router.post("/load-pin-on-change-region", async function (req, res, next) {
       return interval;
     };
 
-    //on reçoit via le body les éléments de la région qu'on place en arguments de la fonction
+    //On reçoit via le body les éléments de la region (vue active sur la carte) qu'on place en arguments de la fonction
     let customInterval = definePerimeter(
       coordinateJsonParse.latitude,
       coordinateJsonParse.longitude,
@@ -117,7 +125,7 @@ router.post("/load-pin-on-change-region", async function (req, res, next) {
       coordinateJsonParse.longitudeDelta
     );
 
-    //on fait la requete dans MongoDB
+    //Recherche des cleanwalks à partir des différents critères dans la base de données MongoDB
     let cleanWalkRequest = await cleanwalkModel
       .find()
       .where("cleanwalkCoordinates.latitude")
@@ -128,7 +136,7 @@ router.post("/load-pin-on-change-region", async function (req, res, next) {
       .lte(customInterval.long.max)
       .where("startingDate")
       .gte(dateSearch)
-      .populate("admin")
+      .populate("admin", "firstName lastName avatarUrl")
       .exec();
 
     res.json({ result: true, cleanWalkArray: cleanWalkRequest });
@@ -139,9 +147,14 @@ router.post("/load-pin-on-change-region", async function (req, res, next) {
 
 
 /*LOAD-CITIES-RANKING*/
+/* Permet de télécharger l'ensemble des villes avec leur nombre de points */
 router.get("/load-cities-ranking", async function (req, res, next) {
+
+  /* Chaque cleanwalk rapporte 5 points à sa ville */
   let pointsPerCw = 5;
 
+  /* Aggrégation qui permet d'extraire les villes et leur nombre de point par ordre décroissant 
+  (villes avec au moins 5 points) */
   let cwpercity = await cleanwalkModel.aggregate([
     { $group: { _id: "$cleanwalkCity", count: { $sum: pointsPerCw } } },
     { $sort: { count: -1 } },
@@ -156,7 +169,7 @@ router.get("/load-cities-ranking", async function (req, res, next) {
   ]);
 
 
-  //ajout des villes sans CW (0 points)
+  /* On ajoute à l'aggrégation les villes sans cleanwalks (0 points) */
   let cityArr = await cityModel.find()
 
   for (let i = 0; i < cityArr.length; i++) {
@@ -171,7 +184,8 @@ router.get("/load-cities-ranking", async function (req, res, next) {
   let user = await userModel.find({ token: token });
 
   if (user.length > 0) {
-
+    /* Mapping du résultat de la recherche pour la faire correspondre à l'objet attendu par le frontend. Ajout
+    d'une propriété isMyCity pour modifier l'affichage de la ville de l'utilisateur */
     cwpercity = cwpercity.map((obj, i) => {
       let copy = {};
       if (obj["_id"].toString() === user[0].city.toString()) {
@@ -192,7 +206,9 @@ router.get("/load-cities-ranking", async function (req, res, next) {
 });
 
 /*LOAD-PROFIL*/
+/* Permet de récupérer l'ensemble des informations nécessaires à l'affichage de la page profil */
 router.get("/load-profil/:token", async function (req, res, next) {
+
   const token = req.params.token;
   const date = new Date();
   const user = await userModel.findOne({ token: token });
@@ -200,17 +216,16 @@ router.get("/load-profil/:token", async function (req, res, next) {
   if (user) {
     const userId = user._id;
 
-    // unwind éclate le tableau 'participantsList' dans l'objet cleanwalk, il fait autant d'objet qu'il y a d'élément dans le tableau
-    // cela devient une clé 'participantsList' de l'objet cleanwalk
-    // on fait ensuite un match pour ne garder que ceux qui ont comme valeur l'id de l'user
-    // puis on fait un match avec la date du jour avec une query pour afficher que celles qui ne sont pas dépassées
+    /* Agrégation qui permet de créer un objet cleanwalk par participant et de filtrer uniquement celles auxquelles participe
+    l'utilisateur et dont la date de début est supérieure à celle envoyée par le frontend */
     const cleanwalksParticipate = await cleanwalkModel.aggregate([
       { $unwind: "$participantsList" },
       { $match: { participantsList: userId } },
       { $match: { startingDate: { $gte: date } } },
     ]);
 
-    // Création du tableau d'objets des CW auquelles ils participent avec uniquement les infos qu'on a besoin
+    /* Création du tableau d'objets des cleanwalks auquelles l'utilisateur participe avec uniquement 
+    les informations nécessaires */
     const infosCWparticipate = cleanwalksParticipate.map((cleanwalk) => {
       return {
         id: cleanwalk._id,
@@ -219,13 +234,14 @@ router.get("/load-profil/:token", async function (req, res, next) {
       };
     });
 
-    // récup des cleanwalks qu'organise le user
+    /* Requête permettant de récupérer les cleanwalks que l'utilisateur organise */
     const cleanwalksOrganize = await cleanwalkModel.find({
       admin: userId,
       startingDate: { $gte: date },
     });
 
-    // Création du tableau d'objets des CW qu'ils organisent avec uniquement les infos qu'on a besoin
+    /* Création du tableau d'objets des cleanwalks que l'utilisateur organise avec uniquement 
+    les informations nécessaires */
     const infosCWorganize = cleanwalksOrganize.map((cleanwalk) => {
       return {
         id: cleanwalk._id,
@@ -234,7 +250,7 @@ router.get("/load-profil/:token", async function (req, res, next) {
       };
     });
 
-    // création d'un objet avec uniquement les infos du user qu'on veut afficher ds le screen profil
+    /* Filtre des informations concernant l'utilisateur renvoyées au frontend */
     const infosUser = {
       firstName: user.firstName,
       lastName: user.lastName,
@@ -245,7 +261,7 @@ router.get("/load-profil/:token", async function (req, res, next) {
     //Statistiques personnelles
     let ArrStatPerso = infosCWorganize.concat(infosCWparticipate);
 
-    //statistiques de ma ville
+    //Statistiques de la ville de l'utilisateur (lorsque le nombre de points est supérieur ou égal à 5)
     let pointsPerCw = 5;
 
     let cwpercity = await cleanwalkModel.aggregate([
@@ -262,7 +278,7 @@ router.get("/load-profil/:token", async function (req, res, next) {
       { $match: { _id: user.city } },
     ]);
 
-    //s'il n'y a pas encore de CW organisées dans la ville, pour remonter ses stats à 0
+    //Statistique de la ville de l'utilisateur (lorsque le nombre de point est 0)
     if (cwpercity.length === 0) {
       userCity = await cityModel.findById(user.city)
       cwpercity = [{
@@ -285,7 +301,8 @@ router.get("/load-profil/:token", async function (req, res, next) {
   }
 });
 
-// unsubscribe to cleanwalk
+/* UNSUBSCRIBE-CW */
+/* Permet de se désinscrire d'une cleanwalk en base de données */
 router.post("/unsubscribe-cw", async function (req, res, next) {
 
   const token = req.body.token;
@@ -305,7 +322,8 @@ router.post("/unsubscribe-cw", async function (req, res, next) {
   }
 });
 
-// delete to cleanwalk
+/* DELETE-CW */
+/* Permet de supprimer une cleanwalk en base de données */
 router.delete("/delete-cw/:token/:idCW", async function (req, res, next) {
 
   const token = req.params.token;
@@ -326,6 +344,7 @@ router.delete("/delete-cw/:token/:idCW", async function (req, res, next) {
 });
 
 /*LOAD MESSAGE*/
+/* Permet de charger les messages du chat d'une cleanwalk enregistrés en base de données */
 router.get("/load-messages/:token/:cwid", async function (req, res, next) {
 
   if (await tokenIsValidated(req.params.token)) {
@@ -341,6 +360,7 @@ router.get("/load-messages/:token/:cwid", async function (req, res, next) {
 
 
 /*SAVE-MESSAGE*/
+/* Permet d'enregistrer un message du chat en base de données  */
 router.post("/save-message", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -373,7 +393,9 @@ router.post("/save-message", async function (req, res, next) {
 });
 
 /*CREATE-CW*/
+/* Route qui permet de créer une cleanwalk en base de données */
 router.post("/create-cw", async function (req, res, next) {
+
   let error = [];
   var result = false;
   let resultSaveCleanwalk = false;
@@ -397,11 +419,12 @@ router.post("/create-cw", async function (req, res, next) {
   let user = await userModel.findOne({ token: userToken });
   let found = await cityModel.findOne({ cityCode: code });
 
+  /* Si la ville est trouvée en base de données */
   if (error.length == 0 && found) {
     let splitedTool = req.body.tool.split(",");
     splitedTool = splitedTool.map(str => str.replace(/ /g, "").replace(/\n/g, ""));
-    //console.log({ splitedTool })
 
+    /* On ajoute la cleanwalk en base de données */
     var addCW = new cleanwalkModel({
       cleanwalkTitle: req.body.title,
       cleanwalkDescription: req.body.description,
@@ -424,7 +447,10 @@ router.post("/create-cw", async function (req, res, next) {
     res.json({ result, error, resultSaveCleanwalk, cleanwalkSave });
   }
 
+  /* Si la ville n'est pas trouvée en base de données */
   else if (error.length == 0 && found == null) {
+
+    /* La ville est créée en base de données */
     let newCity = cityModel({
       cityName: cityInfo.cityName,
       cityCoordinates: {
@@ -437,11 +463,13 @@ router.post("/create-cw", async function (req, res, next) {
 
     let citySaved = await newCity.save();
 
+
     if (citySaved) {
+
       let splitedTool = req.body.tool.split(",");
       splitedTool = splitedTool.map(str => str.replace(/ /g, "").replace(/\n/g, ""));
-      //console.log({ splitedTool })
 
+      /* Si la ville a bien été créée, alors la cleanwalk est également créée */
       var addCW = new cleanwalkModel({
         cleanwalkTitle: req.body.title,
         cleanwalkDescription: req.body.description,
@@ -457,11 +485,18 @@ router.post("/create-cw", async function (req, res, next) {
       });
 
       var cleanwalkSave = await addCW.save();
-    }
 
-    resultSaveCleanwalk = true;
-    resultSaveCity = true;
-    result = true;
+      if (cleanwalkSave) {
+        resultSaveCleanwalk = true;
+        result = true;
+      } else {
+        error.push("La cleanwalk n'a pas pu être créée");
+      }
+
+      resultSaveCity = true;
+    } else {
+      error.push("La ville n'a pas pu être créée");
+    }
 
     res.json({
       result,
@@ -474,8 +509,10 @@ router.post("/create-cw", async function (req, res, next) {
 });
 
 
-// subscribe to cleanwalk
+/* SUBSCRIBE-CW */
+/* Permet à l'utilisateur de participer à une cleanwalk */
 router.post("/subscribe-cw", async function (req, res, next) {
+
   let error = [];
   let user = await userModel.findOne({ token: req.body.token });
 
@@ -492,7 +529,8 @@ router.post("/subscribe-cw", async function (req, res, next) {
   }
 });
 
-/*GET-CITY-FROM-COORDINATES --> proposer une cleanwalk*/
+/* GET-CITY-FROM-COORDINATES */
+/* Permet de récupérer le nom de la commune à partir de coordonnées GPS */
 router.post("/get-city-from-coordinates", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -502,7 +540,6 @@ router.post("/get-city-from-coordinates", async function (req, res, next) {
       `https://api-adresse.data.gouv.fr/reverse/?lon=${req.body.lonFromFront}&lat=${req.body.latFromFront}`
     );
     let response = JSON.parse(requete.body);
-    // console.log("réponse API: ", response);
 
     res.json({ result: true, response: response });
   } else {
@@ -512,6 +549,7 @@ router.post("/get-city-from-coordinates", async function (req, res, next) {
 
 
 /*SEARCH-CITY-ONLY*/
+/* Renvoie une liste de commune (hors arrondissement) à partir d'une chaîne de caractère */
 router.post("/search-city-only", async function (req, res, next) {
 
   if (await tokenIsValidated(req.body.token)) {
@@ -522,10 +560,12 @@ router.post("/search-city-only", async function (req, res, next) {
       `https://api-adresse.data.gouv.fr/search/?q=${req.body.city}&type=municipality`
     );
     let response = JSON.parse(requete.body);
+     /* Supprime les adresses qui contiennent le mot arrondissement */
     let newResponse = response.features.filter(
       (obj) => !cityRegex.test(obj.properties.label)
     );
-    // console.log("newResponse", newResponse);
+
+    /* Permet d'adapter l'objet de réponse au composant autocomplete en ajoutant un champ label */
     newResponse = newResponse.map((obj) => {
       let copy = { ...obj };
       copy.properties.label = copy.properties.city;
@@ -542,7 +582,6 @@ router.post("/search-city-only", async function (req, res, next) {
 /*LOAD-CW-FORSTORE*/
 router.get("/load-cw-forstore/:token", async function (req, res, next) {
   const token = req.params.token;
-  //console.log('token load-cw-forstore', token);
 
   const date = new Date();
   const user = await userModel.findOne({ token: token });
@@ -550,28 +589,26 @@ router.get("/load-cw-forstore/:token", async function (req, res, next) {
   if (user) {
     const userId = user._id;
 
-    // unwind éclate le tableau 'participantsList' dans l'objet cleanwalk, il fait autant d'objet qu'il y a d'élément dans le tableau
-    // cela devient une clé 'participantsList' de l'objet cleanwalk
-    // on fait ensuite un match pour ne garder que ceux qui ont comme valeur l'id de l'user
-    // puis on fait un match avec la date du jour avec une query pour afficher que celles qui ne sont pas dépassées
+    /* Agrégation qui permet de créer un objet cleanwalk par participant et de filtrer uniquement celles auxquelles participe
+    l'utilisateur et dont la date de début est supérieure à celle envoyée par le frontend */
     const cleanwalksParticipate = await cleanwalkModel.aggregate([
       { $unwind: "$participantsList" },
       { $match: { participantsList: userId } },
       { $match: { startingDate: { $gte: date } } },
     ]);
 
-    // Création du tableau des CW auquelles ils participent avec uniquement les ids des CW
+    // Création du tableau de cleanwalk auxquelles l'utilisateur participe avec uniquement les IDs de ces dernières
     const infosCWparticipate = cleanwalksParticipate.map((cleanwalk) => {
       return cleanwalk._id;
     });
 
-    // récup des cleanwalks qu'organise le user
+    // Requête qui permet de récupérer la liste des cleanwalks organisées par l'utilisateur
     const cleanwalksOrganize = await cleanwalkModel.find({
       admin: userId,
       startingDate: { $gte: date },
     });
 
-    // Création du tableau des CW qu'ils organisent avec uniquement les ids des CW
+    // Création du tableau de cleanwalks que l'utilisateur organise avec uniquement les IDs de ces dernières
     const infosCWorganize = cleanwalksOrganize.map((cleanwalk) => {
       return cleanwalk._id;
     });
@@ -582,7 +619,8 @@ router.get("/load-cw-forstore/:token", async function (req, res, next) {
   }
 });
 
-//UPLOAD-PHOTO
+/* UPLOAD-PHOTO */
+/* Permet de modifier la photo de profil de l'utilisateur */
 router.post("/upload-photo/:token", async function (req, res, next) {
 
   if (await tokenIsValidated(req.params.token)) {
@@ -590,14 +628,17 @@ router.post("/upload-photo/:token", async function (req, res, next) {
     let error = [];
     let resultCloudinary;
     let pictureName = './tmp/' + uniqid() + '.jpg';
+    /* Déplace l'image reçue dans un dossier de fichiers temporaires sur le backend */
     let resultCopy = await req.files.avatar.mv(pictureName);
 
     if (!resultCopy) {
+      /* Télécharge la photo sur cloudinary dans le dossier Klean */
       resultCloudinary = await cloudinary.uploader.upload(pictureName,
         { public_id: "Klean/" + uniqid() },
         function (error, result) { console.log(result, error); });
 
       if (resultCloudinary) {
+        /* Enregistrement de l'url de la photo en base de données */
         let user = await userModel.findOne({ token: req.params.token })
         user.avatarUrl = resultCloudinary.secure_url
         userSaved = await user.save()
@@ -616,8 +657,9 @@ router.post("/upload-photo/:token", async function (req, res, next) {
     }
 
     res.json({ result, resultCloudinary, resultCopy, error });
+    /* Suppresion de la photo du dossier de fichiers temporaires */
     fs.unlinkSync(pictureName);
-    
+
   } else {
     res.json({ result: false, error: "user not found" });
   }
