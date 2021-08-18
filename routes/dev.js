@@ -1,22 +1,22 @@
 var express = require('express');
 var router = express.Router();
-var newsModel = require('../models/news')
 var userModel = require('../models/users')
 var cleanwalkModel = require('../models/cleanwalks')
 var cityModel = require('../models/cities')
 const uid2 = require("uid2");
 var bcrypt = require("bcrypt");
 
-/* 
-  /dev/gen-fake-data
-  /dev/del-fake-data
+/* Routes permettant de simuler une base de données fictives et de la supprimer.
+  --> /dev/gen-fake-data
+  --> /dev/del-fake-data
 */
 
-
+/* Fonction aléatoire */
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min) + min)
 };
 
+/* Mise en place de données en dure pour simuler une base de données */
 let lastnameArray = ["Doe", "Dupont", "Leblanc", "Germain", "Martin", "Marchand", "Saint-Hilaire", "Herreman", "Diot", "Dubois", "Moreau", "Lambert", "Charpentier", "Roger"];
 let firstnameArray = ["Mika", "Malo", "John", "Remy", "Sebastien", "Thomas", "Gregoire", "Julien", "Mireille", "Elizabeth", "Anne", "Sam", "Emma", "Jade", "Liam", "William", "Noah"];
 let avatar = [
@@ -235,7 +235,7 @@ let cleanwalks = [
 /*GENERATE FAKE DATA*/
 router.get('/gen-fake-data', async function (req, res, next) {
 
-  //cities
+  //Création des villes
   for (let i = 0; i < cities.length; i++) {
 
     var newCity = new cityModel({
@@ -248,8 +248,7 @@ router.get('/gen-fake-data', async function (req, res, next) {
     var citySaved = await newCity.save();
   };
 
-  //users
-
+  //Créations des utilisateurs
   let requeteCity = await cityModel.find();
   let randfn;
   let randln;
@@ -272,7 +271,7 @@ router.get('/gen-fake-data', async function (req, res, next) {
     var userSaved = await newUser.save();
   }
 
-  //Profil Hugo
+  //Création du profil utilisé pour la démonstration
 
   var hugo = new userModel({
     firstName: "Hugo",
@@ -287,7 +286,7 @@ router.get('/gen-fake-data', async function (req, res, next) {
   var hugoSaved = await hugo.save();
 
 
-  //CleanWalk
+  //Création des cleanwalks
   let randAdmin;
   let AdminOut;
   let randParArr;
@@ -299,14 +298,17 @@ router.get('/gen-fake-data', async function (req, res, next) {
   for (let i = 0; i < cleanwalks.length; i++) {
 
     requeteUser = await userModel.find();
+    /* Définition d'un organisateur de façon aléatoire */
     randAdmin = requeteUser[rand(0, requeteUser.length - 1)]["_id"]
+    /* L'organisateur est supprimé de la liste des utilisateurs en base de données */
     AdminOut = requeteUser.splice(requeteUser.findIndex(e => e["_id"].toString() === randAdmin.toString()), 1)
-    console.log(AdminOut)
 
     randPar = () => {
+      /* Par défault, le profil de démonstration est inscris à l'ensemble des cleanwalks */
       let arr = [hugoSaved._id];
       let p;
 
+      /* Ajoute un participant aléatoirement s'il n'est pas déjà dans la liste */
       for (let i = 0; i < 6; i++) {
         p = requeteUser[rand(0, requeteUser.length - 1)]["_id"]
         if (arr.indexOf(p) === -1) {
@@ -318,8 +320,10 @@ router.get('/gen-fake-data', async function (req, res, next) {
       return arr
     },
 
-      randParArr = randPar()
+    /* Le tableau de participants est créé */
+    randParArr = randPar()
     cityId = await cityModel.findOne({ cityName: cleanwalks[i].cleanwalkCity });
+    /* Choix aléatoire d'un set de date (début / fin) */
     currentDateSet = dateSet[rand(0, dateSet.length - 1)]
     console.log({ cityId });
 
