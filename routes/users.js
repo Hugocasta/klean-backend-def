@@ -39,6 +39,10 @@ router.post("/sign-up", async function (req, res, next) {
     error.push("Vous vous êtes déjà enregistré. Vous pouvez vous connecter.");
   }
 
+  if (req.body.token != process.env.TOKEN_INVITED) {
+    error.push("Utilisateur non identifié.");
+  }
+
   if (
     req.body.firsNameFromFront == "" ||
     req.body.lastNameFromFront == "" ||
@@ -231,6 +235,10 @@ router.post("/sign-in", async function (req, res, next) {
   let idCleanwalk = req.body.cleanwalkIdFromFront;
   let newParticipant = null;
 
+  if (req.body.token != process.env.TOKEN_INVITED) {
+    error.push("Utilisateur non identifié.");
+  }
+  
   if (req.body.emailFromFront == "" || req.body.passwordFromFront == "") {
     error.push("Veuillez remplir les deux champs.");
   }
